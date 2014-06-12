@@ -21,11 +21,14 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <getopt.h>
 
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
+
+#define VERSION             "0.0.1"
 
 #define ARRAY_SIZE_OF(array) (sizeof(array)/sizeof((array)[0]))
 
@@ -171,24 +174,14 @@ float calc_temp(uint32_t value)
     return 42.5 + (int16_t)value/480;
 }
 
-int main(int argc, char **argv) {
-    int fd; 
-    uint8_t bus;
-    uint8_t dev_addr_i;
-    uint8_t dev_addr;
+
+int exec_sense(uint8_t bus, uint8_t dev_addr_i, uint8_t show_press, uint8_t show_temp)
+{
+    int fd;
     char i2c_dev_path[64];
-    uint32_t press;
-    uint32_t temp;
+    uint32_t press, temp;
+    uint8_t dev_addr;
 
-    bus = 0;
-    dev_addr_i = 0;
-
-    if (argc != 1) {
-        bus = (uint8_t)strtol(argv[1], NULL, 0);
-    }
-    if (argc > 3) {
-        dev_addr_i = (uint8_t)strtol(argv[2], NULL, 0);
-    }
     dev_addr = (dev_addr_i == 1) ? I2C_DEV_ADDR_1 : I2C_DEV_ADDR_0;
 
     sprintf(i2c_dev_path, "/dev/i2c-%d", bus);
@@ -202,17 +195,66 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+/* int exec_command(int fd, LPS331AP_COMMAND cmd, uint8_t write_val, uint32_t *read_val) */
+
     exec_command(fd, CMD_WHO_AM_I, 0, NULL);
     exec_command(fd, CMD_CTRL1, PD_ACTIVE|ODR_OUT_FREQ_ONE_ONE, NULL);
     exec_command(fd, CMD_CTRL2, ONE_SHOT_START, NULL);
     exec_command(fd, CMD_WAIT_BOTH, 0, NULL);
     exec_command(fd, CMD_PRESS_OUT, 0, &press);
     exec_command(fd, CMD_TEMP_OUT, 0, &temp);
-    
-    printf("PRESS: %.2f\n", calc_press(press));
-    printf("TEMP: %.2f\n", calc_temp(temp));
+
+    if ((show_press == 1) && (show_temp == 0)) {
+        printf("%.2f\n", calc_press(press));
+    } else if ((show_press == 0) && (show_temp == 1)) {
+        printf("%.2f\n", calc_temp(temp));
+    } else {
+        printf("PRESS: %.2f\n", calc_press(press));
+        printf("TEMP: %.2f\n", calc_temp(temp));
+    }
 
     return EXIT_SUCCESS;
+}
+
+int main(int argc, char **argv) {
+    struct option long_opts[] = {
+        { "bus",            1, NULL, 'b'  },
+        { "dev_addr_i",     1, NULL, 'd'  },
+        { "pressure",       0, NULL, 'P' },
+        { "temperature",    0, NULL, 'T' },
+        { "version",        0, NULL, 'v' },
+        {0, 0, 0, 0}
+    };
+
+    int opt_index = 0;
+    int result = 0;
+    uint8_t bus = 1;
+    uint8_t dev_addr_i = 0;
+    uint8_t show_press = 0;
+    uint8_t show_temp = 0;
+
+    while ((result = getopt_long(argc, argv, "b:PTv",
+                                 long_opts, &opt_index)) != -1) {
+        switch (result) {
+        case 'b':
+            bus = (uint8_t)(atoi(optarg) & 0xFF);
+            break;
+        case 'd':
+            dev_addr_i = (uint8_t)(atoi(optarg) & 0xFF);
+            break;
+        case 'P':
+            show_press = 1;
+            break;
+        case 'T':
+            show_temp = 1;
+            break;
+        case 'v':
+            printf("sense_lps331ap version %s. (build: %s)\n", VERSION,  __TIMESTAMP__);
+            return EXIT_SUCCESS;
+        }
+    }
+
+    return exec_sense(bus, dev_addr_i, show_press, show_temp);
 }
 
 // Local Variables:
