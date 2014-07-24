@@ -135,6 +135,8 @@ int exec_command(int fd, LPS331AP_COMMAND cmd, uint8_t write_val, uint32_t *read
         }
         if ((buf[0] & 0x3) != 0x3) {
             fprintf(stderr, "ERROR: data not ready\n");
+            // something is wrong, so power down
+            exec_write(fd, REG_CTRL_REG1, PD_DOWN);
             exit(EXIT_FAILURE);
         }
         break;
